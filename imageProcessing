@@ -1,0 +1,295 @@
+// opencvtest.cpp : Defines the entry point for the console application.
+//
+using namespace std
+#include "stdafx.h"
+#include <stdio.h>
+#include <stdarg.h>
+
+#include <cv.h>
+#include <cxcore.h>
+#include <highgui.h>
+#include <string>
+#include <iostream>
+#include <vector>
+#include<hash_map>
+
+static int pic =0;
+static IplImage* drawings[4];
+static IplImage* highlights[4];
+////////////////////////////////////////////////
+class BusStop {
+  int area;
+	const char* empty;
+	const char* nonempty;
+	int busstopnum;
+public:
+	void set_busnum (int);
+	void set_pics (const char*, const char*);
+	void set_area (int);
+	int getarea () {return area;}
+	int getbus() {return busstopnum;}
+};
+
+void BusStop::set_busnum(int a){
+	busstopnum = a; 
+}
+void BusStop::set_pics(const char* b,const char* c){
+	empty = b;
+	nonempty = c;
+}
+void BusStop::set_area(int d){
+	area = d;
+}
+
+///////////////////////////////////////////////////
+void selectionSort(BusStop arr[], int n) {
+      int i, j, minIndex; 
+	  BusStop tmp;
+      for (i = 0; i < n - 1; i++) {
+            minIndex = i;
+            for (j = i + 1; j < n; j++)
+				if (arr[j].getarea() < arr[minIndex].getarea())
+                        minIndex = j;
+            if (minIndex != i) {
+                  tmp = arr[i];
+                  arr[i] = arr[minIndex];
+                  arr[minIndex] = tmp;
+            }
+      }
+}
+
+IplImage* DetectAndDrawQuads(IplImage* img, int *count,int *area, IplImage* orig)
+{
+    CvSeq* contours;
+	CvSeq* result;
+    CvMemStorage *storage = cvCreateMemStorage(0);
+	IplImage* ret = cvCreateImage(cvGetSize(img), 8, 3);
+    IplImage* temp = cvCreateImage(cvGetSize(img), 8, 1);
+	//int count = 0;
+	CvRect rec;
+	//int area;
+	int temparea;
+	cvCvtColor(img, temp, CV_BGR2GRAY);
+	cvFindContours(temp, storage, &contours, sizeof(CvContour), CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, cvPoint(0,0));
+	
+	while(contours)
+    {
+		result = cvApproxPoly(contours, sizeof(CvContour), storage, CV_POLY_APPROX_DP, cvContourPerimeter(contours)*0.02, 0);
+
+		if(fabs(cvContourArea(result, CV_WHOLE_SEQ)) > 300){
+		 *count+=1;
+		 rec = cvBoundingRect(contours);	
+		 temparea = rec.height*rec.width;
+		 *area +=temparea;
+		 cvRectangle(orig,cvPoint(rec.x,rec.y),cvPoint(rec.x+rec.width,rec.y+rec.height),cvScalar(0,255,255,255));
+		    
+		}
+		 contours = contours->h_next;
+    }
+	//cout << count << endl;
+    //cvReleaseImage(&temp);
+    //cvReleaseMemStorage(&storage);
+ 
+    return orig;
+}
+
+int countPpl(const char* basecase, const char* nonbase){
+	IplImage *baseimg = cvLoadImage(basecase);//, CV_LOAD_IMAGE_GRAYSCALE);	
+	IplImage *nonbaseimg = cvLoadImage(nonbase);//,CV_LOAD_IMAGE_GRAYSCALE);
+	
+	CvSize imgSize;//
+       imgSize.width = baseimg->width;//get the size of the image
+       imgSize.height = baseimg->height;//
+	   
+	IplImage *baseimg1 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1); /////
+	IplImage *baseimg2 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1); 
+	IplImage *baseimg3 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1); //create empty channels for both base and nonbase cases 
+	IplImage *nonbaseimg1 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1); 
+	IplImage *nonbaseimg2 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1); 
+	IplImage *nonbaseimg3 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1); //////
+
+	cvSplit(baseimg,baseimg1,baseimg2,baseimg3,NULL);//split basecase into 3 channels
+	cvSplit(nonbaseimg,nonbaseimg1,nonbaseimg2,nonbaseimg3,NULL);//split nonbase case into 3 channels
+
+	IplImage *foreground = cvCreateImage( imgSize, IPL_DEPTH_8U, 3);   // final foreground image with 3 channels        
+	IplImage *foreground1 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1);    
+	IplImage *foreground2 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1);    //empty foreground channels
+	IplImage *foreground3 = cvCreateImage( imgSize, IPL_DEPTH_8U, 1);   
+
+	cvAbsDiff(baseimg1,nonbaseimg1,foreground1);//find difference of the 3 channels
+	cvAbsDiff(baseimg2,nonbaseimg2,foreground2);//
+	cvAbsDiff(baseimg3,nonbaseimg3,foreground3);//
+	
+	cvMerge(foreground1,foreground2,foreground3,NULL,foreground);//merge the 3 channels back together
+	cvSmooth(foreground,foreground,CV_GAUSSIAN,9,9,3);//smooth out the final foreground image 
+
+	cvThreshold(foreground,foreground,40,/*70 is the lower cut off*/250,/*this is the higher cut off*/CV_THRESH_BINARY/*The type 
+			of thresholding, more description in the documentation*/);
+	int b = 0;
+
+	int *c= &b;
+	
+	int f = 0;
+	int *g = &f;
+	IplImage* img = foreground;
+	IplImage* contourDrawn = 0;
+	
+	//highlights[pic] = foreground;
+
+	cvNamedWindow("original");	
+    cvShowImage("original", img);
+	contourDrawn = DetectAndDrawQuads(img,c,g, baseimg);
+
+	//drawings[pic] = contourDrawn;
+
+    cvNamedWindow("contours");
+    cvShowImage("contours", contourDrawn);
+ 
+    cvWaitKey(0);
+	//cout << *c << endl;
+	return *g;
+}
+BusStop img(const char* a,const char* b, int c){
+	BusStop d;
+	d.set_area(countPpl(a,b));
+	d.set_busnum(c);
+	return d;
+}
+void cvShowManyImages(char* title, int nArgs, ...) {
+
+    // img - Used for getting the arguments 
+    IplImage *img;
+
+    // DispImage - the image in which input images are to be copied
+    IplImage *DispImage;
+
+    int size;
+    int i;
+    int m, n;
+    int x, y;
+
+    // w - Maximum number of images in a row 
+    // h - Maximum number of images in a column 
+    int w, h;
+
+    // scale - How much we have to resize the image
+    float scale;
+    int max;
+
+    // If the number of arguments is lesser than 0 or greater than 12
+    // return without displaying 
+    if(nArgs <= 0) {
+        printf("Number of arguments too small....\n");
+        return;
+    }
+    else if(nArgs > 12) {
+        printf("Number of arguments too large....\n");
+        return;
+    }
+    // Determine the size of the image, 
+    // and the number of rows/cols 
+    // from number of arguments 
+    else if (nArgs == 1) {
+        w = h = 1;
+        size = 300;
+    }
+    else if (nArgs == 2) {
+        w = 2; h = 1;
+        size = 300;
+    }
+    else if (nArgs == 3 || nArgs == 4) {
+        w = 2; h = 2;
+        size = 300;
+    }
+    else if (nArgs == 5 || nArgs == 6) {
+        w = 3; h = 2;
+        size = 200;
+    }
+    else if (nArgs == 7 || nArgs == 8) {
+        w = 4; h = 2;
+        size = 200;
+    }
+    else {
+        w = 4; h = 3;
+        size = 150;
+    }
+
+    // Create a new 3 channel image
+    DispImage = cvCreateImage( cvSize(100 + size*w, 60 + size*h), 8, 3 );
+
+    // Used to get the arguments passed
+    va_list args;
+    va_start(args, nArgs);
+
+    // Loop for nArgs number of arguments
+    for (i = 0, m = 20, n = 20; i < nArgs; i++, m += (20 + size)) {
+
+        // Get the Pointer to the IplImage
+        img = va_arg(args, IplImage*);
+
+        // Check whether it is NULL or not
+        // If it is NULL, release the image, and return
+        if(img == 0) {
+            printf("Invalid arguments");
+            cvReleaseImage(&DispImage);
+            return;
+        }
+
+        // Find the width and height of the image
+        x = img->width;
+        y = img->height;
+
+        // Find whether height or width is greater in order to resize the image
+        max = (x > y)? x: y;
+
+        // Find the scaling factor to resize the image
+        scale = (float) ( (float) max / size );
+
+        // Used to Align the images
+        if( i % w == 0 && m!= 20) {
+            m = 20;
+            n+= 20 + size;
+        }
+
+        // Set the image ROI to display the current image
+        cvSetImageROI(DispImage, cvRect(m, n, (int)( x/scale ), (int)( y/scale )));
+
+        // Resize the input image and copy the it to the Single Big Image
+        cvResize(img, DispImage);
+
+        // Reset the ROI in order to display the next image
+        cvResetImageROI(DispImage);
+    }
+
+    // Create a new window, and show the Single Big Image
+    cvNamedWindow( title, 1 );
+    cvShowImage( title, DispImage);
+
+    cvWaitKey();
+    cvDestroyWindow(title);
+
+    // End the number of arguments
+    va_end(args);
+
+    // Release the Image Memory
+    cvReleaseImage(&DispImage);
+}
+int _tmain(int argc, _TCHAR* argv[])
+{	
+	BusStop a = img("nonblank.jpg","blank.jpg",1);
+	BusStop c = img("7.jpg","4.jpg",2);
+	BusStop b = img("6.jpg","4.jpg",3);	
+	
+	BusStop d = img("9.jpg","11.jpg",4);
+
+	BusStop order[] = {a,b,c,d};
+	
+	selectionSort(order,4);
+	cout << "Priority List:" << endl;
+	for(int i = 3;i>=0;i--){
+		cout << "Bus stop " << order[i].getbus() << endl;
+	}
+	cvWaitKey(0);
+	
+	return 0;
+}
